@@ -106,6 +106,27 @@ Listar inscriptos de una comisión desde una sola URL:
 uv run siu-guarani-mcp inscriptos-cursada "https://autogestion-guarani.unr.edu.ar/zona_comisiones/home/<hash>" --json
 ```
 
+Detalle de una cursada (clases por categoría) y de una mesa:
+
+```bash
+uv run siu-guarani-mcp detalle-cursada "https://autogestion-guarani.unr.edu.ar/zona_clases/home/<hash>" --json
+uv run siu-guarani-mcp detalle-mesa "https://autogestion-guarani.unr.edu.ar/zona_examenes/home/<hash>" --json
+```
+
+Inscriptos a una mesa de examen (sin PII por defecto; `--include-pii` para email/teléfono):
+
+```bash
+uv run siu-guarani-mcp inscriptos-examen "https://autogestion-guarani.unr.edu.ar/zona_examenes/home/<hash>" --json
+uv run siu-guarani-mcp inscriptos-examen "https://autogestion-guarani.unr.edu.ar/zona_examenes/home/<hash>" --include-pii --json
+```
+
+Actas de Reporte de Actas con filtros (origen R/E/P, período, actividad):
+
+```bash
+uv run siu-guarani-mcp reporte-actas --origen E --json
+uv run siu-guarani-mcp reporte-actas --origen R --actividad "Procesamiento del Lenguaje Natural" --json
+```
+
 Listar agenda de exámenes:
 
 ```bash
@@ -185,6 +206,10 @@ Herramientas MCP expuestas:
 | `detalle_acta_cursada_docente(numero_acta)` | Busca un acta de cursada y devuelve sus renglones. |
 | `resolver_cursada_docente(url)` | Resuelve los enlaces operativos de una cursada desde una SOLA URL. |
 | `inscriptos_cursada_docente(url)` | Lista inscriptos de una comisión desde una sola URL. |
+| `detalle_cursada_docente(url)` | Detalle de cursada: clases por categoría (dictadas/sin dictar/anuladas). |
+| `detalle_mesa_docente(url)` | Detalle de mesa de examen: metadatos. |
+| `inscriptos_examen_docente(url, include_pii=False)` | Inscriptos a mesa de examen; sin PII por defecto. |
+| `reporte_actas_docente(origen, periodo, actividad)` | Actas de Reporte de Actas (R/E/P) con filtros. |
 
 El resolver (`resolver_cursada`) acepta una URL `zona_clases/home/<hash>` **o** `zona_comisiones/home/<hash>` y devuelve los enlaces a Cargar Notas, Alumnos, Evaluaciones, Actas y Asistencia, para no pasar dos URLs a mano.
 
@@ -298,10 +323,8 @@ CI: el workflow `.github/workflows/ci.yml` corre `uv run pytest`, compila fuente
 
 ## Roadmap
 
-- `detalle_cursada(url)` con parseo específico de clases.
-- `detalle_mesa(url)` con parseo específico de mesa.
-- `inscriptos_examen(url)` con salida minimizada para PII.
 - Escritura con confirmación (asistencia/temas/notas) si se decide exponerla.
+- Export a XLSX de actas/inscriptos, no solo de cursos.
 - Mejor soporte para variaciones entre instalaciones Guaraní.
 
 ## Licencia

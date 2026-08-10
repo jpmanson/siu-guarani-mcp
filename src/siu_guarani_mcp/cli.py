@@ -136,6 +136,39 @@ def inscriptos_cursada(url: str, json_output: bool = typer.Option(True, "--json"
     emit(GuaraniClient().inscriptos_cursada(url), json_output)
 
 
+@app.command("detalle-cursada")
+def detalle_cursada(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Detalle de una cursada desde zona_clases/home (por categoría)."""
+    emit(GuaraniClient().detalle_cursada(url), json_output)
+
+
+@app.command("detalle-mesa")
+def detalle_mesa(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Detalle de una mesa de examen desde zona_examenes/home."""
+    emit(GuaraniClient().detalle_mesa(url), json_output)
+
+
+@app.command("inscriptos-examen")
+def inscriptos_examen(
+    url: str,
+    include_pii: bool = typer.Option(False, "--include-pii", help="Incluir email/teléfono (PII)"),
+    json_output: bool = typer.Option(True, "--json", help="Emitir JSON"),
+) -> None:
+    """Lista inscriptos a una mesa de examen (sin PII por defecto)."""
+    emit(GuaraniClient().inscriptos_examen(url, include_pii=include_pii), json_output)
+
+
+@app.command("reporte-actas")
+def reporte_actas(
+    origen: str = typer.Option("R", "--origen", help="R cursadas, E exámenes, P promociones"),
+    periodo: str = typer.Option(None, "--periodo", help="Período lectivo (hash o label)"),
+    actividad: str = typer.Option(None, "--actividad", help="Nombre de actividad"),
+    json_output: bool = typer.Option(True, "--json", help="Emitir JSON"),
+) -> None:
+    """Lista actas de Reporte de Actas con filtros."""
+    emit(GuaraniClient().reporte_actas(origen=origen, periodo=periodo, actividad=actividad), json_output)
+
+
 @app.command("serve")
 def serve() -> None:
     """Levanta el servidor MCP por stdio."""

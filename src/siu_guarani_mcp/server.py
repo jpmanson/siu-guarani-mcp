@@ -94,5 +94,25 @@ def inscriptos_cursada_docente(url: str) -> list[dict[str, Any]]:
     return GuaraniClient().inscriptos_cursada(url)
 
 
+@mcp.tool(description="Detalle de una cursada desde zona_clases/home/<hash>: metadatos + clases agrupadas por categoría (dictadas/sin dictar/anuladas).")
+def detalle_cursada_docente(url: str) -> dict[str, Any]:
+    return GuaraniClient().detalle_cursada(url)
+
+
+@mcp.tool(description="Detalle de una mesa de examen desde zona_examenes/home/<hash>: metadatos de la mesa.")
+def detalle_mesa_docente(url: str) -> dict[str, Any]:
+    return GuaraniClient().detalle_mesa(url)
+
+
+@mcp.tool(description="Lista inscriptos a una mesa de examen desde zona_examenes/home/<hash> o inscriptos_examen/info/<hash>. Por defecto NO incluye email/teléfono (PII); usa include_pii=True para incluirlos.")
+def inscriptos_examen_docente(url: str, include_pii: bool = False) -> list[dict[str, Any]]:
+    return GuaraniClient().inscriptos_examen(url, include_pii=include_pii)
+
+
+@mcp.tool(description="Lista actas de Reporte de Actas con filtros opcionales. origen: R (cursadas), E (exámenes), P (promociones). Puede filtrar por periodo y actividad.")
+def reporte_actas_docente(origen: str = "R", periodo: str | None = None, actividad: str | None = None) -> list[dict[str, Any]]:
+    return GuaraniClient().reporte_actas(origen=origen, periodo=periodo, actividad=actividad)
+
+
 def main() -> None:
     mcp.run("stdio")

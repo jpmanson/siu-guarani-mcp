@@ -10,7 +10,10 @@ from siu_guarani_mcp.client import (
     parse_activity_tables,
     parse_alumnos_asistencia_page,
     parse_detalle_acta_cursada,
+    parse_detalle_cursada,
+    parse_detalle_mesa,
     parse_notas_cursada_page,
+    parse_plain_tables,
     parse_reporte_actas,
 )
 from siu_guarani_mcp.dates import parse_date_input
@@ -156,11 +159,16 @@ class TestActasParsers:
     def test_reporte_actas_cursada_and_examen(self):
         page = page_from_fixture("reporte_actas_pagelets.html", "reporte_actas")
         rows = parse_reporte_actas(page["content_html"])
-        # Only .cursada rows are parsed by parse_reporte_actas
-        assert len(rows) == 1
-        assert rows[0]["acta"] == "90001"
-        assert rows[0]["actividad"] == "Materia Demo (DM01)"
-        assert rows[0]["url_acta"] == "hashacta"
+        assert len(rows) == 2
+        by_acta = {r["acta"]: r for r in rows}
+        cursada = by_acta["90001"]
+        assert cursada["tipo"] == "cursada"
+        assert cursada["actividad"] == "Materia Demo (DM01)"
+        assert cursada["url_acta"] == "hashacta"
+        examen = by_acta["DEMO-EN-0001"]
+        assert examen["tipo"] == "examen"
+        assert examen["mesa"] == "Mesa Demo 1"
+        assert examen["fecha"] == "21/07/2026"
 
     def test_detalle_acta_renglones(self):
         page = page_from_fixture("detalle_acta_pagelets.html", "reporte_actas")
@@ -171,6 +179,43 @@ class TestActasParsers:
         assert rows[0]["nota"] == "9 (Nueve)"
         assert rows[0]["resultado"] == "Aprobado"
         assert rows[1]["resultado"] == "Ausente"
+
+
+class TestNuevosDetalles:
+    def test_detalle_cursada_por_categoria(self):
+        page = page_from_fixture("zona_clases_home_pagelets.html", "zona_clases")
+        detail = parse_detalle_cursada(page["content_html"])
+        cats = {c["categoria"]: c["items"] for c in detail["categorias"]}
+        assert "Clases dictadas" in cats
+        assert "Clases sin dictar" in cats
+        assert "Clases anuladas" in cats
+        assert len(cats["Clases dictadas"]) == 1
+        assert cats["Clases dictadas"][0]["fecha"] == "03/03/2026"
+        assert cats["Clases dictadas"][0]["dia"] == "Martes"
+        assert len(cats["Clases sin dictar"]) == 1
+        assert "No hay registros disponibles" in cats["Clases anuladas"][0]
+
+    def test_detalle_mesa_metadatos(self):
+        page = page_from_fixture("zona_examenes_home_pagelets.html", "zona_examenes")
+        detail = parse_detalle_mesa(page["content_html"])
+        assert detail["actividad"] == "Materia Demo (DM01)"
+        assert detail["mesa"] == "Mesa Demo 2"
+        assert detail["turno"] == "DEMO 2026"
+        assert detail["fecha_del_examen"] == "04/08/2026 18:00"
+        assert detail["ubicacion"] == "Sede Demo"
+        assert detail["lugar"] == "-"
+
+    def test_inscriptos_examen_plain_table_con_headers_td(self):
+        page = page_from_fixture("inscriptos_examen_pagelets.html", "inscriptos_examen")
+        rows = parse_plain_tables(page["content_html"])
+        assert len(rows) == 2
+        assert rows[0]["legajo"] == "Z-0001/1"
+        assert rows[0]["alumno"] == "Alumno Uno, Demo"
+        assert rows[0]["email"].startswith("Email Principal:")
+        assert rows[1]["telefono"].startswith("Telefono Celular:")
+        # PII keys present in raw parse
+        assert "email" in rows[0]
+        assert "telefono" in rows[0]
 
 
 class TestSourceQualityContracts:

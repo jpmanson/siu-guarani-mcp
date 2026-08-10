@@ -335,6 +335,68 @@ class GuaraniClient:
         info_page = self.get_url(info_url)
         return parse_plain_tables(info_page.get("content_html") or info_page.get("all_content_html") or "")
 
+    def detalle_cursada(self, url: str) -> dict[str, Any]:
+        """Detalle de una cursada: metadatos + clases agrupadas por categoría."""
+        page = self.get_url(url)
+        operation = page["operation"]
+        if operation != "zona_clases":
+            raise GuaraniError("detalle_cursada requiere una URL zona_clases/home/<hash>")
+        html = page.get("content_html") or ""
+        return parse_detalle_cursada(html)
+
+    def detalle_mesa(self, url: str) -> dict[str, Any]:
+        """Detalle de una mesa de examen: metadatos + docentes e instancias."""
+        page = self.get_url(url)
+        operation = page["operation"]
+        if operation != "zona_examenes":
+            raise GuaraniError("detalle_mesa requiere una URL zona_examenes/home/<hash>")
+        html = page.get("content_html") or ""
+        return parse_detalle_mesa(html)
+
+    def inscriptos_examen(self, url: str, *, include_pii: bool = False) -> list[dict[str, Any]]:
+        """Lista inscriptos a una mesa de examen.
+
+        `url` puede ser `zona_examenes/home/<hash>` o `inscriptos_examen/info/<hash>`.
+        Por defecto NO devuelve email/teléfono (PII). Usa `include_pii=True` para incluirlos.
+        """
+        page = self.get_url(url)
+        info_url = url
+        if page["operation"] == "zona_examenes":
+            detail = summarize_detail_page(page)
+            links = [link for link in detail["links"] if link.get("operation", "").startswith("inscriptos_examen")]
+            if not links:
+                return []
+            info_url = links[-1]["href"]
+        elif not page["operation"].startswith("inscriptos_examen"):
+            raise GuaraniError("inscriptos_examen requiere zona_examenes/home o inscriptos_examen/info")
+        info_page = self.get_url(info_url)
+        rows = parse_plain_tables(info_page.get("content_html") or info_page.get("all_content_html") or "")
+        if not include_pii:
+            for row in rows:
+                row.pop("email", None)
+                row.pop("telefono", None)
+        return rows
+
+    def reporte_actas(self, origen: str = "R", periodo: str | None = None, actividad: str | None = None) -> list[dict[str, Any]]:
+        """Lista actas de Reporte de Actas con filtros opcionales período/actividad.
+
+        `origen`: R (cursadas), E (exámenes), P (promociones).
+        `periodo`: hash o label del período lectivo. `actividad`: nombre de actividad.
+        """
+        origin_origen = origen.upper()
+        params = {"origen": origin_origen, "actividad": actividad or "", "per_lec": periodo or ""}
+        url = urljoin(self.base_url, "reporte_actas/filtrar_actas")
+        self.ensure_login()
+        response = self.session.post(url, data=params, timeout=self.timeout)
+        response.raise_for_status()
+        html = response.text
+        try:
+            payload = response.json()
+            html = payload.get("html", html)
+        except ValueError:
+            pass
+        return parse_reporte_actas(html)
+
 
 def extract_title(html: str) -> str | None:
     m = re.search(r"<title>(.*?)</title>", html, flags=re.S | re.I)
@@ -514,6 +576,77 @@ def summarize_tables(soup: BeautifulSoup) -> list[dict[str, Any]]:
     return tables
 
 
+def parse_detalle_cursada(fragment: str) -> dict[str, Any]:
+    """Parse zona_clases/home/<hash> content into metadatos + clases por categoría.
+
+    Las categorías se delimitan por `<h4>` (Clases dictadas / sin dictar / anuladas),
+    cada una seguida de una tabla de clases o un aviso "No hay registros disponibles".
+    """
+    soup = BeautifulSoup(fragment or "", "html.parser")
+    categories: dict[str, Any] = {}
+    order: list[str] = []
+    current: str | None = None
+    for node in soup.find_all(["h4", "table", "div"]):
+        if node.name == "h4":
+            current = node.get_text(" ", strip=True).strip()
+            if current and current not in categories:
+                categories[current] = []
+                order.append(current)
+            continue
+        if node.name == "table" and current is not None:
+            headers = table_headers(node)
+            for tr in node.find_all("tr"):
+                cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
+                if not cells or set(cells) == set(headers):
+                    continue
+                row = {}
+                for i, header in enumerate(headers):
+                    if i < len(cells):
+                        row[normalize_key(header)] = cells[i]
+                link = tr.get("data-link")
+                a = tr.find("a", href=True)
+                href = str(a.get("href")) if isinstance(a, Tag) else ""
+                if link or href:
+                    row["url"] = link or href
+                if row:
+                    categories[current].append(row)
+            continue
+        if node.name == "div" and current is not None and "alert" in " ".join(node.get("class") or []):
+            categories[current].append(node.get_text(" ", strip=True).strip())
+    return {"categorias": [{"categoria": name, "items": categories[name]} for name in order]}
+
+
+def parse_detalle_mesa(fragment: str) -> dict[str, Any]:
+    """Parse zona_examenes/home/<hash> content into mesa metadata.
+
+    Extrae los pares `<p><strong>Etiqueta:</strong> valor</p>` del hero-unit.
+    """
+    soup = BeautifulSoup(fragment or "", "html.parser")
+    hero = soup.select_one(".hero-unit") or soup
+    data: dict[str, Any] = {}
+    for p in hero.find_all("p"):
+        strong = p.find("strong")
+        if not strong:
+            continue
+        label = strong.get_text(" ", strip=True).rstrip(":")
+        value = strong.next_sibling
+        value_text = ""
+        if value:
+            tail = [x for x in p.contents if x is not strong]
+            parts = []
+            for x in tail:
+                try:
+                    parts.append(x.get_text(" ", strip=True) if hasattr(x, "get_text") else str(x))
+                except Exception:
+                    parts.append(str(x))
+            value_text = " ".join(parts)
+        data[normalize_key(label)] = " ".join(value_text.split()).strip()
+    h2 = soup.select_one(".actividad-titulo")
+    if h2:
+        data["actividad"] = h2.get_text(" ", strip=True)
+    return data
+
+
 def parse_alumnos_asistencia_page(page: dict[str, Any]) -> list[dict[str, Any]]:
     html = "\n".join(
         p.get("content", "")
@@ -606,11 +739,33 @@ def parse_notas_cursada_page(page: dict[str, Any], page_number: int | None = Non
 def parse_reporte_actas(fragment: str) -> list[dict[str, Any]]:
     soup = BeautifulSoup(fragment or "", "html.parser")
     rows: list[dict[str, Any]] = []
-    for tr in soup.select("tr.cursada[data-acta]"):
+    for tr in soup.select("tr[data-acta]"):
         cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
+        is_examen = "examen" in (tr.get("class") or [])
+        if is_examen:
+            if len(cells) < 12:
+                continue
+            rows.append({
+                "tipo": "examen",
+                "acta": cells[0],
+                "actividad": cells[1],
+                "mesa": cells[2],
+                "llamado": cells[3],
+                "fecha": cells[4],
+                "ubicacion": cells[5],
+                "estado": cells[6],
+                "acta_digital": cells[7],
+                "estado_firma": cells[8],
+                "firmantes": cells[9],
+                "pendientes_firma": cells[10],
+                "rechazado_por": cells[11],
+                "url_acta": tr.get("data-link") or tr.get("id") or "",
+            })
+            continue
         if len(cells) < 10:
             continue
         rows.append({
+            "tipo": "cursada",
             "acta": cells[0],
             "actividad": cells[1],
             "comision": cells[2],
@@ -675,7 +830,16 @@ def parse_plain_tables(fragment: str) -> list[dict[str, Any]]:
                 break
         if not headers:
             continue
+        header_row_index = None
         for tr in table.find_all("tr"):
+            header_cells = tr.find_all("th") or tr.find_all("td", class_=re.compile("cc-titulo"))
+            header_texts = [h.get_text(" ", strip=True) for h in header_cells if h.get_text(" ", strip=True)]
+            if header_texts == headers and tr.find_all("td"):
+                header_row_index = id(tr)
+                break
+        for tr in table.find_all("tr"):
+            if header_row_index is not None and id(tr) == header_row_index:
+                continue
             cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
             if not cells:
                 continue
