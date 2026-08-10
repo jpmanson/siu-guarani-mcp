@@ -57,5 +57,10 @@ def detalle_url_docente(url: str) -> dict[str, Any]:
     return GuaraniClient().detalle_url(url)
 
 
+@mcp.tool(description="Lista alumnos de una cursada desde una URL zona_clases/home/<hash> o asistencias/<hash>. Devuelve nombre, legajo, hash interno y presente para la clase mostrada.")
+def alumnos_cursada_docente(url: str) -> list[dict[str, Any]]:
+    return GuaraniClient().alumnos_cursada(url)
+
+
 def main() -> None:
     mcp.run("stdio")

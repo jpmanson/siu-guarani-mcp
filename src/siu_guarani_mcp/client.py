@@ -162,6 +162,21 @@ class GuaraniClient:
         page = self.get_url(url)
         return summarize_detail_page(page)
 
+    def alumnos_cursada(self, url: str) -> list[dict[str, Any]]:
+        """Lista alumnos de una cursada desde zona_clases/home/<hash> o asistencias/<hash>."""
+        page = self.get_url(url)
+        operation = page["operation"]
+        if operation == "zona_clases":
+            detail = summarize_detail_page(page)
+            asistencia_links = [link for link in detail["links"] if link.get("operation") == "asistencias"]
+            if not asistencia_links:
+                return []
+            # Prefer the zone-level Asistencia link, which appears after per-class action links.
+            page = self.get_url(asistencia_links[-1]["href"])
+        elif operation != "asistencias":
+            raise GuaraniError("alumnos_cursada requiere una URL zona_clases/home/<hash> o asistencias/<hash>")
+        return parse_alumnos_asistencia_page(page)
+
 
 def extract_title(html: str) -> str | None:
     m = re.search(r"<title>(.*?)</title>", html, flags=re.S | re.I)
@@ -339,6 +354,41 @@ def summarize_tables(soup: BeautifulSoup) -> list[dict[str, Any]]:
             "sample_rows": rows[:5],
         })
     return tables
+
+
+def parse_alumnos_asistencia_page(page: dict[str, Any]) -> list[dict[str, Any]]:
+    html = "\n".join(
+        p.get("content", "")
+        for p in page.get("pagelets", [])
+        if p.get("op") == "asistencias" and (p.get("info") or {}).get("id") == "edicion_asistencias"
+    )
+    if not html:
+        html = page.get("all_content_html") or page.get("content_html") or ""
+    soup = BeautifulSoup(html, "html.parser")
+    alumnos: list[dict[str, Any]] = []
+    for box in soup.select(".box-asistencia"):
+        checkbox = box.find("input", attrs={"type": "checkbox", "name": re.compile(r"^alumnos\[[^]]+\]\[PRESENTE\]$")})
+        if not checkbox:
+            continue
+        name_attr = str(checkbox.get("name") or "")
+        match = re.search(r"alumnos\[([^]]+)\]\[PRESENTE\]", name_attr)
+        alumno_hash = match.group(1) if match else None
+        name_node = box.select_one(".info .truncate")
+        nombre = (name_node.get("title") if name_node else None) or (name_node.get_text(" ", strip=True) if name_node else "")
+        info = box.select_one(".info")
+        legajo = ""
+        if info:
+            divs = info.find_all("div", recursive=False)
+            if len(divs) > 1:
+                legajo = divs[1].get_text(" ", strip=True)
+        classes = set(box.get("class") or [])
+        alumnos.append({
+            "nombre": str(nombre).strip(),
+            "legajo": legajo,
+            "alumno_hash": alumno_hash,
+            "presente": bool(checkbox.has_attr("checked") or "presente" in classes),
+        })
+    return alumnos
 
 
 def normalize_key(label: str) -> str:

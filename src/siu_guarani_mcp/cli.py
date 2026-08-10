@@ -87,6 +87,12 @@ def detalle_url(url: str, json_output: bool = typer.Option(True, "--json/--text"
     emit(detail if json_output else detail["text"], json_output)
 
 
+@app.command("alumnos-cursada")
+def alumnos_cursada(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Lista alumnos de una cursada desde zona_clases/home/<hash> o asistencias/<hash>."""
+    emit(GuaraniClient().alumnos_cursada(url), json_output)
+
+
 @app.command("serve")
 def serve() -> None:
     """Levanta el servidor MCP por stdio."""

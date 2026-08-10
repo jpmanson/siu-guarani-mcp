@@ -112,6 +112,15 @@ uv run siu-guarani-mcp detalle-url "https://autogestion-guarani.unr.edu.ar/zona_
 - formularios detectados
 - links internos descubiertos
 
+Listar alumnos de una cursada desde su detalle o desde la URL de asistencia:
+
+```bash
+uv run siu-guarani-mcp alumnos-cursada "https://autogestion-guarani.unr.edu.ar/zona_clases/home/<hash>" --json
+uv run siu-guarani-mcp alumnos-cursada "https://autogestion-guarani.unr.edu.ar/asistencias/<hash>" --json
+```
+
+Devuelve `nombre`, `legajo`, `alumno_hash` y `presente` para la clase de asistencia mostrada. La salida puede contener datos personales.
+
 ## Servidor MCP
 
 Levantar el servidor MCP por stdio:
@@ -147,6 +156,7 @@ Herramientas MCP expuestas:
 | `agenda_examenes_docente` | Lista agenda de exámenes docente. |
 | `operacion_docente(operation)` | Trae una operación arbitraria del perfil Docente. |
 | `detalle_url_docente(url)` | Resume una URL detalle del portal configurado. |
+| `alumnos_cursada_docente(url)` | Lista alumnos desde `zona_clases/home/<hash>` o `asistencias/<hash>`. |
 
 ## Agent Plugins v1.0.0
 
