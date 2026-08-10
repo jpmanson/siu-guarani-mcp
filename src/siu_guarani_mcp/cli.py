@@ -62,9 +62,13 @@ def cursadas(json_output: bool = typer.Option(False, "--json", help="Emitir JSON
 
 
 @app.command("mesas")
-def mesas(json_output: bool = typer.Option(False, "--json", help="Emitir JSON")) -> None:
-    """Lista mesas de examen operables desde zona_examenes."""
-    emit(GuaraniClient().mesas_examen(), json_output)
+def mesas(
+    json_output: bool = typer.Option(False, "--json", help="Emitir JSON"),
+    desde: str = typer.Option(None, "--desde", help="Fecha desde dd/mm/aaaa o ISO yyyy-mm-dd"),
+    hasta: str = typer.Option(None, "--hasta", help="Fecha hasta dd/mm/aaaa o ISO yyyy-mm-dd"),
+) -> None:
+    """Lista mesas de examen operables desde zona_examenes (rango amplio por defecto)."""
+    emit(GuaraniClient().mesas_examen(desde=desde, hasta=hasta), json_output)
 
 
 @app.command("agenda-examenes")
@@ -110,6 +114,14 @@ def export_cursada(
     from .export import export_cursada_con_notas
 
     emit(export_cursada_con_notas(zona_clases_url, zona_comisiones_url, output_dir, basename), True)
+
+
+@app.command("buscar-acta")
+def buscar_acta(numero: str, detalle: bool = typer.Option(False, "--detalle", help="Incluir renglones del detalle")) -> None:
+    """Busca un acta de cursada por número."""
+    client = GuaraniClient()
+    result = client.detalle_acta_cursada(numero) if detalle else client.buscar_acta_cursada(numero)
+    emit(result or {"found": False, "acta": numero}, True)
 
 
 @app.command("serve")

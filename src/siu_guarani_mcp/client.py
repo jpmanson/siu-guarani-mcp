@@ -150,10 +150,40 @@ class GuaraniClient:
         page = self.get_operation("zona_clases")
         return parse_activity_tables(page["content_html"], context_kind="periodo")
 
-    def mesas_examen(self) -> list[dict[str, Any]]:
-        page = self.get_operation("zona_examenes")
-        return parse_activity_tables(page["content_html"], context_kind="general")
+    def mesas_examen(self, desde: str | None = None, hasta: str | None = None) -> list[dict[str, Any]]:
+        """Lista mesas de examen. Si no se pasan fechas, usa un rango amplio para no depender del default corto de SIU.
 
+        `desde`/`hasta` aceptan dd/mm/aaaa o ISO (yyyy-mm-dd[/T...]).
+        """
+        from datetime import date, timedelta
+
+        from .dates import parse_date_input
+
+        try:
+            desde_norm = parse_date_input(desde, field_name="desde")
+            hasta_norm = parse_date_input(hasta, field_name="hasta")
+        except ValueError as exc:
+            raise GuaraniError(str(exc)) from exc
+
+        today = date.today()
+        # Default SIU is roughly ±7 days; widen so recent/upcoming mesas are visible.
+        desde_norm = desde_norm or (today - timedelta(days=90)).strftime("%d/%m/%Y")
+        hasta_norm = hasta_norm or (today + timedelta(days=180)).strftime("%d/%m/%Y")
+        page = self.get_operation(
+            "zona_examenes",
+            method="post",
+            data={
+                "filtrar_por": "r",
+                "desde": desde_norm,
+                "hasta": hasta_norm,
+                "fecha": desde_norm,
+            },
+        )
+        rows = parse_activity_tables(page["content_html"], context_kind="general")
+        for row in rows:
+            row.setdefault("filtro_desde", desde_norm)
+            row.setdefault("filtro_hasta", hasta_norm)
+        return rows
     def agenda_examenes(self) -> list[dict[str, Any]]:
         page = self.get_operation("agenda_examenes")
         return parse_activity_tables(page["content_html"], context_kind="general")
@@ -204,6 +234,29 @@ class GuaraniClient:
             if not parsed or "Siguiente" not in (page_data.get("content_text") or ""):
                 break
         return rows
+
+    def actas_cursada(self) -> list[dict[str, Any]]:
+        page = self.get_operation("reporte_actas")
+        return parse_reporte_actas(page.get("content_html") or "")
+
+    def buscar_acta_cursada(self, numero_acta: str) -> dict[str, Any] | None:
+        numero = str(numero_acta).strip()
+        for acta in self.actas_cursada():
+            if str(acta.get("acta", "")).strip() == numero:
+                url_acta = acta.get("url_acta") or ""
+                acta["detalle_url"] = urljoin(self.base_url, f"reporte_actas/detalle?url_acta={url_acta}&actividad=&per_lec=&acta={numero}&origen=R")
+                return acta
+        return None
+
+    def detalle_acta_cursada(self, numero_acta: str) -> dict[str, Any] | None:
+        acta = self.buscar_acta_cursada(numero_acta)
+        if not acta:
+            return None
+        page = self.get_url(acta["detalle_url"], operation="reporte_actas")
+        detail = summarize_detail_page(page)
+        detail["acta"] = acta
+        detail["renglones"] = parse_detalle_acta_cursada(page.get("content_html") or page.get("all_content_html") or "")
+        return detail
 
 
 def extract_title(html: str) -> str | None:
@@ -422,8 +475,14 @@ def parse_alumnos_asistencia_page(page: dict[str, Any]) -> list[dict[str, Any]]:
 def selected_option(select: Tag | None) -> tuple[str, str]:
     if not select:
         return "", ""
-    option = select.find("option", selected=True)
+    option = select.find("option", selected=True) or select.select_one("option[selected]")
     if option is None:
+        # Fall back to data-valor-original if present on the select.
+        original = select.get("data-valor-original")
+        if original not in (None, ""):
+            for opt in select.find_all("option"):
+                if str(opt.get("value") or "") == str(original):
+                    return str(original), opt.get_text(" ", strip=True)
         return "", ""
     return str(option.get("value") or ""), option.get_text(" ", strip=True)
 
@@ -465,6 +524,52 @@ def parse_notas_cursada_page(page: dict[str, Any], page_number: int | None = Non
             "pagina": page_number,
         })
     return rows
+
+
+def parse_reporte_actas(fragment: str) -> list[dict[str, Any]]:
+    soup = BeautifulSoup(fragment or "", "html.parser")
+    rows: list[dict[str, Any]] = []
+    for tr in soup.select("tr.cursada[data-acta]"):
+        cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
+        if len(cells) < 10:
+            continue
+        rows.append({
+            "acta": cells[0],
+            "actividad": cells[1],
+            "comision": cells[2],
+            "ubicacion": cells[3],
+            "estado": cells[4],
+            "acta_digital": cells[5],
+            "estado_firma": cells[6],
+            "firmantes": cells[7],
+            "pendientes_firma": cells[8],
+            "rechazado_por": cells[9],
+            "url_acta": tr.get("data-link") or tr.get("id") or "",
+        })
+    return rows
+
+
+def parse_detalle_acta_cursada(fragment: str) -> list[dict[str, Any]]:
+    soup = BeautifulSoup(fragment or "", "html.parser")
+    renglones: list[dict[str, Any]] = []
+    current_folio = ""
+    for tr in soup.find_all("tr"):
+        text = html_to_text(str(tr))
+        if text.startswith("Folio:"):
+            current_folio = text.replace("Folio:", "", 1).strip()
+            continue
+        cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
+        if len(cells) >= 6 and cells[0] != "Legajo":
+            renglones.append({
+                "folio": current_folio,
+                "legajo": cells[0],
+                "alumno": cells[1],
+                "fecha": cells[2],
+                "nota": cells[3],
+                "condicion": cells[4],
+                "resultado": cells[5],
+            })
+    return renglones
 
 
 def normalize_key(label: str) -> str:

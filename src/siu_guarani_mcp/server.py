@@ -29,9 +29,9 @@ def cursadas_docente() -> list[dict[str, Any]]:
     return GuaraniClient().cursadas()
 
 
-@mcp.tool(description="Lista mesas de examen operables del docente desde zona_examenes.")
-def mesas_examen_docente() -> list[dict[str, Any]]:
-    return GuaraniClient().mesas_examen()
+@mcp.tool(description="Lista mesas de examen operables del docente desde zona_examenes. Por defecto usa un rango amplio de fechas (-90/+180 días). Opcionalmente acepta desde/hasta en dd/mm/aaaa.")
+def mesas_examen_docente(desde: str | None = None, hasta: str | None = None) -> list[dict[str, Any]]:
+    return GuaraniClient().mesas_examen(desde=desde, hasta=hasta)
 
 
 @mcp.tool(description="Lista agenda de exámenes del docente desde agenda_examenes.")
@@ -72,6 +72,16 @@ def exportar_cursada_docente(zona_clases_url: str, zona_comisiones_url: str, out
     from .export import export_cursada_con_notas
 
     return export_cursada_con_notas(zona_clases_url, zona_comisiones_url, output_dir, basename)
+
+
+@mcp.tool(description="Busca un acta de cursada por número dentro de Reporte de Actas.")
+def buscar_acta_cursada_docente(numero_acta: str) -> dict[str, Any] | None:
+    return GuaraniClient().buscar_acta_cursada(numero_acta)
+
+
+@mcp.tool(description="Busca un acta de cursada por número y devuelve sus renglones de detalle.")
+def detalle_acta_cursada_docente(numero_acta: str) -> dict[str, Any] | None:
+    return GuaraniClient().detalle_acta_cursada(numero_acta)
 
 
 def main() -> None:
