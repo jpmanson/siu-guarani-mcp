@@ -93,6 +93,25 @@ def alumnos_cursada(url: str, json_output: bool = typer.Option(True, "--json", h
     emit(GuaraniClient().alumnos_cursada(url), json_output)
 
 
+@app.command("notas-cursada")
+def notas_cursada(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Lista notas cargadas desde zona_comisiones/home/<hash> o cursada/edicion/<hash>."""
+    emit(GuaraniClient().notas_cursada(url), json_output)
+
+
+@app.command("export-cursada")
+def export_cursada(
+    zona_clases_url: str,
+    zona_comisiones_url: str,
+    output_dir: str = typer.Option("export", "--output-dir", "-o", help="Directorio de salida"),
+    basename: str = typer.Option("estudiantes_notas_cursada", "--basename", help="Nombre base de archivos"),
+) -> None:
+    """Exporta alumnos + notas de una cursada a CSV, XLSX y JSON."""
+    from .export import export_cursada_con_notas
+
+    emit(export_cursada_con_notas(zona_clases_url, zona_comisiones_url, output_dir, basename), True)
+
+
 @app.command("serve")
 def serve() -> None:
     """Levanta el servidor MCP por stdio."""

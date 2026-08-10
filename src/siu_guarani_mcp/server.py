@@ -62,5 +62,17 @@ def alumnos_cursada_docente(url: str) -> list[dict[str, Any]]:
     return GuaraniClient().alumnos_cursada(url)
 
 
+@mcp.tool(description="Lista notas cargadas de una cursada desde zona_comisiones/home/<hash> o cursada/edicion/<hash>.")
+def notas_cursada_docente(url: str) -> list[dict[str, Any]]:
+    return GuaraniClient().notas_cursada(url)
+
+
+@mcp.tool(description="Exporta alumnos + notas de una cursada a CSV, XLSX y JSON. Requiere URL zona_clases/home/<hash> y zona_comisiones/home/<hash>.")
+def exportar_cursada_docente(zona_clases_url: str, zona_comisiones_url: str, output_dir: str = "export", basename: str = "estudiantes_notas_cursada") -> dict[str, Any]:
+    from .export import export_cursada_con_notas
+
+    return export_cursada_con_notas(zona_clases_url, zona_comisiones_url, output_dir, basename)
+
+
 def main() -> None:
     mcp.run("stdio")

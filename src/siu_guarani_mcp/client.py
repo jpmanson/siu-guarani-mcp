@@ -177,6 +177,34 @@ class GuaraniClient:
             raise GuaraniError("alumnos_cursada requiere una URL zona_clases/home/<hash> o asistencias/<hash>")
         return parse_alumnos_asistencia_page(page)
 
+    def notas_cursada(self, url: str) -> list[dict[str, Any]]:
+        """Lista notas cargadas desde zona_comisiones/home/<hash> o cursada/edicion/<hash>."""
+        page = self.get_url(url)
+        edit_url = url
+        if page["operation"] == "zona_comisiones":
+            detail = summarize_detail_page(page)
+            links = [link for link in detail["links"] if link.get("operation") == "cursada" and "Cargar Notas" in link.get("text", "")]
+            if not links:
+                return []
+            edit_url = links[-1]["href"]
+        elif page["operation"] != "cursada":
+            raise GuaraniError("notas_cursada requiere una URL zona_comisiones/home/<hash> o cursada/edicion/<hash>")
+        base = edit_url.rstrip("/")
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for page_number in range(1, 100):
+            page_url = f"{base}/{page_number}"
+            page_data = self.get_url(page_url)
+            parsed = parse_notas_cursada_page(page_data, page_number=page_number)
+            new_rows = [row for row in parsed if row.get("renglon_id") not in seen]
+            for row in new_rows:
+                if row.get("renglon_id"):
+                    seen.add(row["renglon_id"])
+            rows.extend(new_rows)
+            if not parsed or "Siguiente" not in (page_data.get("content_text") or ""):
+                break
+        return rows
+
 
 def extract_title(html: str) -> str | None:
     m = re.search(r"<title>(.*?)</title>", html, flags=re.S | re.I)
@@ -389,6 +417,54 @@ def parse_alumnos_asistencia_page(page: dict[str, Any]) -> list[dict[str, Any]]:
             "presente": bool(checkbox.has_attr("checked") or "presente" in classes),
         })
     return alumnos
+
+
+def selected_option(select: Tag | None) -> tuple[str, str]:
+    if not select:
+        return "", ""
+    option = select.find("option", selected=True)
+    if option is None:
+        return "", ""
+    return str(option.get("value") or ""), option.get_text(" ", strip=True)
+
+
+def parse_notas_cursada_page(page: dict[str, Any], page_number: int | None = None) -> list[dict[str, Any]]:
+    html = "\n".join(
+        p.get("content", "")
+        for p in page.get("pagelets", [])
+        if p.get("op") == "notas_cursada_comision" and (p.get("info") or {}).get("id") == "renglones"
+    )
+    if not html:
+        html = page.get("all_content_html") or page.get("content_html") or ""
+    soup = BeautifulSoup(html, "html.parser")
+    rows: list[dict[str, Any]] = []
+    for tr in soup.select("tr[id^='renglon_']"):
+        nombre_node = tr.select_one(".datos-alumno .nombre")
+        identificacion_node = tr.select_one(".datos-alumno .identificacion")
+        renglon_id = str(tr.get("data-renglon") or "")
+        fecha = tr.find("input", attrs={"name": re.compile(r"^renglones\[[^]]+\]\[fecha_promocion\]$")})
+        nota_select = tr.find("select", attrs={"name": re.compile(r"^renglones\[[^]]+\]\[nota_promocion\]$")})
+        resultado_select = tr.find("select", attrs={"name": re.compile(r"^renglones\[[^]]+\]\[resultado_promocion\]$")})
+        observacion = tr.find("input", attrs={"name": re.compile(r"^renglones\[[^]]+\]\[observacion_promocion\]$")})
+        nota_valor, nota_label = selected_option(nota_select if isinstance(nota_select, Tag) else None)
+        resultado_valor, resultado_label = selected_option(resultado_select if isinstance(resultado_select, Tag) else None)
+        acta_cell = tr.select_one(".col-nro-acta")
+        asistencia_cell = tr.select_one(".col-asistencia")
+        rows.append({
+            "renglon_id": renglon_id,
+            "nombre": (nombre_node.get("title") if nombre_node else "") or (nombre_node.get_text(" ", strip=True) if nombre_node else ""),
+            "identificacion": (identificacion_node.get("title") if identificacion_node else "") or (identificacion_node.get_text(" ", strip=True) if identificacion_node else ""),
+            "asistencia": asistencia_cell.get_text(" ", strip=True) if asistencia_cell else "",
+            "acta": acta_cell.get_text(" ", strip=True) if acta_cell else "",
+            "fecha_promocion": str(fecha.get("value") or "") if isinstance(fecha, Tag) else "",
+            "nota_promocion": nota_valor,
+            "nota_promocion_label": nota_label,
+            "resultado_promocion": resultado_valor,
+            "resultado_promocion_label": resultado_label,
+            "observacion_promocion": str(observacion.get("value") or "") if isinstance(observacion, Tag) else "",
+            "pagina": page_number,
+        })
+    return rows
 
 
 def normalize_key(label: str) -> str:
