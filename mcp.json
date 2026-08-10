@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "siu-guarani": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "siu-guarani-mcp",
+        "serve"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

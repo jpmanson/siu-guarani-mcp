@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "siu-guarani",
+  "version": "0.1.0",
+  "description": "MCP server for SIU Guarani academic self-service, focused on docente queries.",
+  "author": {
+    "name": "Juan Pablo Manson",
+    "email": "jpmanson@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "siu-guarani",
+    "academic",
+    "docente"
+  ]
+}
