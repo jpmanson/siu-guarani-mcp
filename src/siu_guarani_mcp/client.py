@@ -258,6 +258,83 @@ class GuaraniClient:
         detail["renglones"] = parse_detalle_acta_cursada(page.get("content_html") or page.get("all_content_html") or "")
         return detail
 
+    def resolver_cursada(self, url: str) -> dict[str, Any]:
+        """Resuelve los enlaces operativos de una cursada a partir de una sola URL.
+
+        Acepta `zona_clases/home/<hash>` o `zona_comisiones/home/<hash>` y devuelve
+        los enlaces a Cargar Notas, Alumnos, Evaluaciones, Actas y Asistencia.
+        """
+        resolved_pairs = self._resolve_cursada_pairs(url)
+        if not resolved_pairs:
+            raise GuaraniError("No encontré la cursada. Pasá una URL de zona_clases/home o zona_comisiones/home.")
+        zone = resolved_pairs["zona_comisiones_url"] or resolved_pairs["zona_clases_url"]
+        page = self.get_url(zone)
+        links = extract_links(BeautifulSoup(page.get("all_content_html") or page.get("content_html") or "", "html.parser"))
+        enlaces: dict[str, str] = {}
+        for text, op, href in [(l.get("text", ""), l.get("operation", ""), l.get("href", "")) for l in links]:
+            label = text.strip()
+            if not label or not href:
+                continue
+            if "Cargar Notas" in label and "cursada" not in enlaces:
+                enlaces["notas"] = href
+            elif label == "Alumnos" and "alumnos" not in enlaces:
+                enlaces["alumnos"] = href
+            elif label == "Evaluaciones" and "evaluaciones" not in enlaces:
+                enlaces["evaluaciones"] = href
+            elif label == "Actas" and "actas" not in enlaces:
+                enlaces["actas"] = href
+            elif label == "Asistencia" and "asistencia" not in enlaces:
+                enlaces["asistencia"] = href
+        resolved_pairs["enlaces"] = enlaces
+        return resolved_pairs
+
+    def _resolve_cursada_pairs(self, url: str) -> dict[str, Any] | None:
+        self.ensure_login()
+        target = url.rstrip("/")
+        clases = self.cursadas()
+        comisiones = self.get_operation("zona_comisiones")
+        comisiones_rows = parse_activity_tables(comisiones.get("content_html") or "", context_kind="periodo")
+
+        def key(row: dict[str, Any]) -> tuple:
+            return (
+                row.get("periodo_lectivo"),
+                row.get("comision") or row.get("mesa"),
+                str(row.get("inscripciones", "")),
+            )
+
+        by_url = {}
+        for row in list(clases) + list(comisiones_rows):
+            u = (row.get("url") or "").rstrip("/")
+            if u:
+                by_url[u] = row
+
+        start = by_url.get(target)
+        if start is None:
+            return None
+        base = key(start)
+        match_clases = next((r for r in clases if key(r) == base and r.get("url")), None)
+        match_comisiones = next((r for r in comisiones_rows if key(r) == base and r.get("url")), None)
+        return {
+            "zona_clases_url": match_clases.get("url") if match_clases else None,
+            "zona_comisiones_url": match_comisiones.get("url") if match_comisiones else None,
+            "identificacion": {k: start.get(k) for k in ("actividad", "periodo_lectivo", "comision", "inscripciones") if k in start},
+        }
+
+    def inscriptos_cursada(self, url: str) -> list[dict[str, Any]]:
+        """Lista inscriptos de una comisión desde zona_comisiones/home o inscriptos_cursadas/info_comision."""
+        page = self.get_url(url)
+        info_url = url
+        if page["operation"] == "zona_comisiones":
+            detail = summarize_detail_page(page)
+            alumnos_links = [link for link in detail["links"] if link.get("operation", "").startswith("inscriptos_cursadas")]
+            if not alumnos_links:
+                return []
+            info_url = alumnos_links[-1]["href"]
+        elif not page["operation"].startswith("inscriptos_cursadas"):
+            raise GuaraniError("inscriptos_cursada requiere zona_comisiones/home o inscriptos_cursadas/info_comision")
+        info_page = self.get_url(info_url)
+        return parse_plain_tables(info_page.get("content_html") or info_page.get("all_content_html") or "")
+
 
 def extract_title(html: str) -> str | None:
     m = re.search(r"<title>(.*?)</title>", html, flags=re.S | re.I)
@@ -578,3 +655,33 @@ def normalize_key(label: str) -> str:
     s = s.translate(repl)
     s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
     return s or "campo"
+
+
+def parse_plain_tables(fragment: str) -> list[dict[str, Any]]:
+    """Parse the first meaningful data table (header + rows) from a Guaraní fragment.
+
+    Headers may be `<th>` or `<td>`. Used for listado de inscriptos
+    (inscriptos_cursadas/info_comision), which uses `td.cc-titulo-nivel-0`.
+    """
+    soup = BeautifulSoup(fragment or "", "html.parser")
+    result: list[dict[str, Any]] = []
+    for table in soup.find_all("table"):
+        headers: list[str] = []
+        for tr in table.find_all("tr"):
+            header_cells = tr.find_all("th") or tr.find_all("td", class_=re.compile("cc-titulo"))
+            texts = [h.get_text(" ", strip=True) for h in header_cells if h.get_text(" ", strip=True)]
+            if texts:
+                headers = texts
+                break
+        if not headers:
+            continue
+        for tr in table.find_all("tr"):
+            cells = [td.get_text(" ", strip=True) for td in tr.find_all("td", recursive=False)]
+            if not cells:
+                continue
+            row = {normalize_key(headers[i]): cells[i] for i in range(min(len(headers), len(cells)))}
+            if row:
+                result.append(row)
+        if result:
+            return result
+    return result

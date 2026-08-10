@@ -1,5 +1,7 @@
 # siu-guarani-mcp
 
+[![CI](https://github.com/jpmanson/siu-guarani-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jpmanson/siu-guarani-mcp/actions/workflows/ci.yml)
+
 CLI y servidor MCP para consultar SIU Guaraní Autogestión desde el perfil Docente.
 
 El proyecto está pensado para automatizar consultas docentes de Guaraní sin depender de una instalación institucional específica. Por defecto apunta a Autogestión UNR, pero puede usarse con otras instalaciones configurando `GUARANI_BASE_URL`.
@@ -84,6 +86,26 @@ Listar mesas de examen operables:
 uv run siu-guarani-mcp mesas --json
 ```
 
+Por defecto usa un rango amplio (-90/+180 días) para no depender del rango corto de SIU. Se puede acotar `--desde` / `--hasta` en formato `dd/mm/aaaa` o ISO (`YYYY-MM-DD`, incluyendo datetime `YYYY-MM-DDTHH:MM:SSZ`):
+
+```bash
+uv run siu-guarani-mcp mesas --desde 2026-07-15 --hasta 2026-08-10 --json
+uv run siu-guarani-mcp mesas --desde 15/07/2026 --hasta 10/08/2026 --json
+```
+
+Resolver los enlaces operativos de una cursada desde una sola URL:
+
+```bash
+uv run siu-guarani-mcp resolver-cursada "https://autogestion-guarani.unr.edu.ar/zona_clases/home/<hash>" --json
+uv run siu-guarani-mcp resolver-cursada "https://autogestion-guarani.unr.edu.ar/zona_comisiones/home/<hash>" --json
+```
+
+Listar inscriptos de una comisión desde una sola URL:
+
+```bash
+uv run siu-guarani-mcp inscriptos-cursada "https://autogestion-guarani.unr.edu.ar/zona_comisiones/home/<hash>" --json
+```
+
 Listar agenda de exámenes:
 
 ```bash
@@ -152,11 +174,19 @@ Herramientas MCP expuestas:
 | `login_check` | Valida login y cambio al perfil Docente. |
 | `periodos_lectivos` | Lista períodos visibles en `zona_clases`. |
 | `cursadas_docente` | Lista cursadas/comisiones del docente. |
-| `mesas_examen_docente` | Lista mesas de examen operables. |
+| `mesas_examen_docente` | Lista mesas de examen operables, con rango de fechas por defecto y opcional. |
 | `agenda_examenes_docente` | Lista agenda de exámenes docente. |
 | `operacion_docente(operation)` | Trae una operación arbitraria del perfil Docente. |
 | `detalle_url_docente(url)` | Resume una URL detalle del portal configurado. |
 | `alumnos_cursada_docente(url)` | Lista alumnos desde `zona_clases/home/<hash>` o `asistencias/<hash>`. |
+| `notas_cursada_docente(url)` | Lista notas cargadas desde `zona_comisiones/home` o `cursada/edicion`. |
+| `exportar_cursada_docente(zona_clases_url, zona_comisiones_url, ...)` | Exporta alumnos + notas a CSV/XLSX/JSON. |
+| `buscar_acta_cursada_docente(numero_acta)` | Busca un acta de cursada por número. |
+| `detalle_acta_cursada_docente(numero_acta)` | Busca un acta de cursada y devuelve sus renglones. |
+| `resolver_cursada_docente(url)` | Resuelve los enlaces operativos de una cursada desde una SOLA URL. |
+| `inscriptos_cursada_docente(url)` | Lista inscriptos de una comisión desde una sola URL. |
+
+El resolver (`resolver_cursada`) acepta una URL `zona_clases/home/<hash>` **o** `zona_comisiones/home/<hash>` y devuelve los enlaces a Cargar Notas, Alumnos, Evaluaciones, Actas y Asistencia, para no pasar dos URLs a mano.
 
 ## Agent Plugins v1.0.0
 
@@ -237,7 +267,19 @@ Las operaciones de carga de asistencia, temas o notas contienen formularios POST
 
 ## Desarrollo
 
-Ejecutar chequeos básicos:
+Requiere dependencias de desarrollo:
+
+```bash
+uv sync --all-extras --group dev
+```
+
+Ejecutar la suite de tests (no necesita credenciales; usa fixtures HTML anonimizados):
+
+```bash
+uv run pytest
+```
+
+Chequeos básicos:
 
 ```bash
 uv run python -m compileall -q src
@@ -252,13 +294,14 @@ uv run python -m json.tool plugin.json >/dev/null
 uv run python -m json.tool mcp.json >/dev/null
 ```
 
+CI: el workflow `.github/workflows/ci.yml` corre `uv run pytest`, compila fuentes y valida los manifiestos en cada push a `main` y PR.
+
 ## Roadmap
 
 - `detalle_cursada(url)` con parseo específico de clases.
 - `detalle_mesa(url)` con parseo específico de mesa.
-- `inscriptos_mesa(url)` con salida minimizada para PII.
-- Exportadores CSV/JSON limpios.
-- Tests con fixtures HTML anonimizados.
+- `inscriptos_examen(url)` con salida minimizada para PII.
+- Escritura con confirmación (asistencia/temas/notas) si se decide exponerla.
 - Mejor soporte para variaciones entre instalaciones Guaraní.
 
 ## Licencia

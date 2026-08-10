@@ -84,5 +84,15 @@ def detalle_acta_cursada_docente(numero_acta: str) -> dict[str, Any] | None:
     return GuaraniClient().detalle_acta_cursada(numero_acta)
 
 
+@mcp.tool(description="Resuelve los enlaces operativos de una cursada a partir de una SOLA URL (zona_clases/home/<hash> o zona_comisiones/home/<hash>). Devuelve URLs a Cargar Notas, Alumnos, Evaluaciones, Actas y Asistencia.")
+def resolver_cursada_docente(url: str) -> dict[str, Any]:
+    return GuaraniClient().resolver_cursada(url)
+
+
+@mcp.tool(description="Lista inscriptos de una comisión a partir de una SOLA URL (zona_comisiones/home/<hash> o inscriptos_cursadas/info_comision/<hash>).")
+def inscriptos_cursada_docente(url: str) -> list[dict[str, Any]]:
+    return GuaraniClient().inscriptos_cursada(url)
+
+
 def main() -> None:
     mcp.run("stdio")

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras --group dev
+
+      - name: Compile sources
+        run: uv run python -m compileall -q src
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Validate Agent Plugins manifests
+        run: |
+          uv run python -m json.tool plugin.json >/dev/null
+          uv run python -m json.tool mcp.json >/dev/null

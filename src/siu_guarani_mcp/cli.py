@@ -124,6 +124,18 @@ def buscar_acta(numero: str, detalle: bool = typer.Option(False, "--detalle", he
     emit(result or {"found": False, "acta": numero}, True)
 
 
+@app.command("resolver-cursada")
+def resolver_cursada(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Resuelve enlaces operativos de una cursada desde una sola URL."""
+    emit(GuaraniClient().resolver_cursada(url), json_output)
+
+
+@app.command("inscriptos-cursada")
+def inscriptos_cursada(url: str, json_output: bool = typer.Option(True, "--json", help="Emitir JSON")) -> None:
+    """Lista inscriptos de una comisión desde zona_comisiones/home o info_comision."""
+    emit(GuaraniClient().inscriptos_cursada(url), json_output)
+
+
 @app.command("serve")
 def serve() -> None:
     """Levanta el servidor MCP por stdio."""
